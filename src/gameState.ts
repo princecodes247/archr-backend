@@ -48,7 +48,6 @@ export const joinRoom = (roomId: string, playerId: string): Room | undefined => 
 };
 
 export const removePlayer = (playerId: string) => {
-    // Find room and remove player
     for (const roomId in rooms) {
         const room = rooms[roomId];
         const idx = room.players.findIndex(p => p.id === playerId);
@@ -56,7 +55,16 @@ export const removePlayer = (playerId: string) => {
             room.players.splice(idx, 1);
             if (room.players.length === 0) {
                 delete rooms[roomId];
+                return undefined;
             }
+            // If the disconnected player held the turn, pass it to the remaining player
+            if (room.currentTurn === playerId && room.players.length > 0) {
+                room.currentTurn = room.players[0].id;
+            }
+            // Reset scores and round for a fresh game with the next opponent
+            room.round = 1;
+            room.players.forEach(p => p.score = 0);
+            room.wind = { x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 2 };
             return room;
         }
     }
