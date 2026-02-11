@@ -87,15 +87,12 @@ export const handleShot = (roomId: string, playerId: string, score: number): Roo
     const nextIdx = (currentIdx + 1) % room.players.length;
     room.currentTurn = room.players[nextIdx].id;
     
-    // Increment round if back to first player? 
-    // Or just count shots.
-    // Let's say Round ends when both fired.
+    // Round ends when both players have fired (turn cycles back to first player)
     if (nextIdx === 0) {
         room.round++;
+        // Randomize wind for the NEW round (same wind for both players within a round)
+        room.wind = { x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 2 };
     }
-    
-    // Randomize wind for next turn
-    room.wind = { x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 2 };
     
     return room;
 };
