@@ -18,23 +18,20 @@ export const GRAVITY = 0.5; // Adjusted for game feel
 
 // Function to calculate trajectory points
 // Function to calculate shot result based on reticle position
-export const calculateShot = (aimPosition: Vector): { path: Point[], score: number } => {
+export const calculateShot = (aimPosition: Vector, wind: Vector): { path: Point[], score: number } => {
   const path: Point[] = [];
   
-  // In the new mechanic, aimPosition is where the reticle was when fired.
-  // We assume the Target Center is at (0,0) in this "aim space" relative to the target.
-  // Or, the frontend sends the offset from the target center.
-  // Let's assume aimPosition IS the offset from the bullseye.
+  // Apply wind to the shot
+  // Wind pushes the arrow during flight.
+  // The aim position is where you aimed, but the arrow drifts.
+  // Let's say wind is a force vector.
+  const windDriftFactor = 8.0; // Significant drift
+  const finalX = aimPosition.x + wind.x * windDriftFactor;
+  const finalY = aimPosition.y + wind.y * windDriftFactor;
+
+  const finalPos = { x: finalX, y: finalY };
   
-  const distance = Math.sqrt(aimPosition.x * aimPosition.x + aimPosition.y * aimPosition.y);
-  
-  // Score calculation: Closer to 0 is better.
-  // Max radius for score? 
-  // Bullseye < 10 -> 10 pts
-  // Inner ring < 30 -> 8 pts
-  // Middle ring < 50 -> 5 pts
-  // Outer ring < 80 -> 2 pts
-  // Miss > 80 -> 0 pts
+  const distance = Math.sqrt(finalPos.x * finalPos.x + finalPos.y * finalPos.y);
   
   let score = 0;
   if (distance < 10) score = 10;
@@ -42,10 +39,7 @@ export const calculateShot = (aimPosition: Vector): { path: Point[], score: numb
   else if (distance < 50) score = 5;
   else if (distance < 80) score = 2;
   
-  // Generate a simple visual "impact" path (just one point for now, or a line zipping in)
-  // For visual flair, we can generate a path that starts from "screen" and goes to "target".
-  // But for now, just returning the hit point is enough for the frontend to draw the arrow stuck there.
-  path.push({ x: aimPosition.x, y: aimPosition.y });
+  path.push(finalPos);
 
   return { path, score };
 };

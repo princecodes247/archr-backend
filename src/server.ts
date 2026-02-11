@@ -35,7 +35,7 @@ io.on('connection', (socket) => {
     console.log('Shot received:', data.aimPosition);
     
     // Calculate physics
-    const result = calculateShot(data.aimPosition);
+    const result = calculateShot(data.aimPosition, room.wind);
     
     // Update State
     const updatedRoom = handleShot(roomId, socket.id, result.score);
