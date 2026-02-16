@@ -90,8 +90,12 @@ export const handleShot = (roomId: string, playerId: string, score: number): Roo
     // Round ends when both players have fired (turn cycles back to first player)
     if (nextIdx === 0) {
         room.round++;
-        // Randomize wind for the NEW round (same wind for both players within a round)
-        room.wind = { x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 2 };
+        if (room.round > room.maxRounds) {
+            room.currentTurn = ''; // Game Over
+        } else {
+            // Randomize wind for the NEW round (same wind for both players within a round)
+            room.wind = { x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 2 };
+        }
     }
     
     return room;
