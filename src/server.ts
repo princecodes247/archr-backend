@@ -18,21 +18,38 @@ const PORT = 3000;
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // Auto join a default room for now
-  const roomId = 'default-arena';
-  const room = joinRoom(roomId, socket.id);
-  socket.join(roomId);
-  io.to(roomId).emit('gameState', room);
+  // Handle joining a game (Solo or Multiplayer)
+  socket.on('joinGame', (mode: 'solo' | 'multiplayer') => {
+      // For solo, create a unique room per player
+      // For multiplayer, try to find an open room or create one
+      // Simplified: Solo = socket.id, Multi = 'default-arena' (for now)
+      const roomId = mode === 'solo' ? `solo_${socket.id}` : 'default-arena';
+      const room = joinRoom(roomId, socket.id, mode);
+      
+      if (room) {
+          socket.join(roomId);
+          socket.emit('gameState', room); // Send to just this user initially
+          // If multiplayer, broadcast to others in room
+          if (mode === 'multiplayer') {
+              socket.to(roomId).emit('gameState', room);
+          }
+      } else {
+          socket.emit('error', 'Room full or invalid mode');
+      }
+  });
 
   socket.on('shoot', (data: { aimPosition: { x: number, y: number } }) => {
+    // Determine room I am in
+    // This is a simplification; ideally store roomId on socket or look it up
+    let roomId = Array.from(socket.rooms).find(r => r !== socket.id);
+    if (!roomId) return;
+
     // Validate turn
     const room = getRoom(roomId);
     if (!room || room.currentTurn !== socket.id) {
         console.log('Not your turn:', socket.id);
         return;
     };
-    
-    console.log('Shot received:', data.aimPosition);
     
     // Calculate physics
     const result = calculateShot(data.aimPosition, room.wind);
@@ -47,17 +64,27 @@ io.on('connection', (socket) => {
         score: result.score
     });
     
-    // Delay state update slightly so visualization can start? 
-    // Or send immediately and frontend handles it.
     io.to(roomId).emit('gameState', updatedRoom);
+  });
+
+  // Leaderboard
+  socket.on('submitScore', (data: { name: string, score: number }) => {
+      const { submitScore, getLeaderboard } = require('./gameState'); // Dynamic import to avoid cycle? Or just import top-level
+      submitScore(data.name, data.score);
+      io.emit('leaderboardUpdate', getLeaderboard());
+  });
+
+  socket.on('getLeaderboard', () => {
+      const { getLeaderboard } = require('./gameState');
+      socket.emit('leaderboardUpdate', getLeaderboard());
   });
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
     removePlayer(socket.id);
-    // Broadcast update?
-    const room = getRoom(roomId);
-    if (room) io.to(roomId).emit('gameState', room);
+    // Determine roomId? Harder now. 
+    // Ideally removePlayer returns the affected room
+    // broadcast to that room
   });
 });
 
