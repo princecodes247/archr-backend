@@ -3,7 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { calculateShot } from './physics';
 import {
-    generateUserId, isValidUserId,
+    generateUserId, isValidUserId, findOrCreateUser,
     joinRoom, handleShot, removePlayer, getRoom, deleteRoom,
     tickTimer, isSoloGameOver, findActiveGame,
     submitScore, getLeaderboard
@@ -31,12 +31,41 @@ const cleanupTimers: Record<string, NodeJS.Timeout> = {};
 
 const SOLO_RECONNECT_WINDOW = 60_000; // 60s to reconnect
 
+// Helper: start a solo timer for a room
+const startSoloTimer = (roomId: string) => {
+    if (soloTimers[roomId]) return; // Already running
+
+    soloTimers[roomId] = setInterval(async () => {
+        const updatedRoom = tickTimer(roomId);
+        if (!updatedRoom) {
+            clearInterval(soloTimers[roomId]);
+            delete soloTimers[roomId];
+            return;
+        }
+        io.to(roomId).emit('timerUpdate', {
+            timeRemaining: updatedRoom.timeRemaining
+        });
+        if (isSoloGameOver(updatedRoom)) {
+            clearInterval(soloTimers[roomId]);
+            delete soloTimers[roomId];
+            updatedRoom.currentTurn = '';
+            // Auto-submit score to leaderboard
+            const player = updatedRoom.players[0];
+            if (player && player.score > 0) {
+                await submitScore(player.userId, player.score);
+                const lb = await getLeaderboard();
+                io.emit('leaderboardUpdate', lb);
+            }
+            io.to(roomId).emit('gameState', updatedRoom);
+        }
+    }, 1000);
+};
+
 io.on('connection', (socket) => {
   console.log('Socket connected:', socket.id);
 
   // ── Registration ──
-  // Client sends existing userId (from localStorage) or nothing
-  socket.on('register', (data: { userId?: string }, callback) => {
+  socket.on('register', async (data: { userId?: string }, callback) => {
       let userId: string;
 
       if (data?.userId && isValidUserId(data.userId)) {
@@ -47,9 +76,11 @@ io.on('connection', (socket) => {
           console.log('New user registered:', userId, '← socket:', socket.id);
       }
 
+      // Persist user in DB
+      await findOrCreateUser(userId);
+
       socketUserMap[socket.id] = userId;
 
-      // Acknowledge with the confirmed userId
       if (typeof callback === 'function') {
           callback({ userId });
       } else {
@@ -65,7 +96,6 @@ io.on('connection', (socket) => {
           return;
       }
 
-      // For solo: check if there's an active game to rejoin
       if (mode === 'solo') {
           const activeGame = findActiveGame(userId);
           const roomId = `solo_${userId}`;
@@ -84,38 +114,12 @@ io.on('connection', (socket) => {
                   socket.join(roomId);
                   socket.emit('gameState', room);
                   console.log('Player rejoined active game:', roomId);
-
-                  // Restart timer if not running
-                  if (!soloTimers[roomId]) {
-                      soloTimers[roomId] = setInterval(() => {
-                          const updatedRoom = tickTimer(roomId);
-                          if (!updatedRoom) {
-                              clearInterval(soloTimers[roomId]);
-                              delete soloTimers[roomId];
-                              return;
-                          }
-                          io.to(roomId).emit('timerUpdate', {
-                              timeRemaining: updatedRoom.timeRemaining
-                          });
-                          if (isSoloGameOver(updatedRoom)) {
-                              clearInterval(soloTimers[roomId]);
-                              delete soloTimers[roomId];
-                              updatedRoom.currentTurn = '';
-                              // Auto-submit score to leaderboard
-                              const player = updatedRoom.players[0];
-                              if (player && player.score > 0) {
-                                  submitScore(player.userId, player.score);
-                                  io.emit('leaderboardUpdate', getLeaderboard());
-                              }
-                              io.to(roomId).emit('gameState', updatedRoom);
-                          }
-                      }, 1000);
-                  }
+                  startSoloTimer(roomId);
                   return;
               }
           }
 
-          // No active game — clean up any old finished room and create fresh
+          // No active game — clean up any old finished room
           if (getRoom(roomId)) {
               clearInterval(soloTimers[roomId]);
               delete soloTimers[roomId];
@@ -126,30 +130,7 @@ io.on('connection', (socket) => {
           if (room) {
               socket.join(roomId);
               socket.emit('gameState', room);
-
-              soloTimers[roomId] = setInterval(() => {
-                  const updatedRoom = tickTimer(roomId);
-                  if (!updatedRoom) {
-                      clearInterval(soloTimers[roomId]);
-                      delete soloTimers[roomId];
-                      return;
-                  }
-                  io.to(roomId).emit('timerUpdate', {
-                      timeRemaining: updatedRoom.timeRemaining
-                  });
-                  if (isSoloGameOver(updatedRoom)) {
-                      clearInterval(soloTimers[roomId]);
-                      delete soloTimers[roomId];
-                      updatedRoom.currentTurn = '';
-                      // Auto-submit score to leaderboard
-                      const player = updatedRoom.players[0];
-                      if (player && player.score > 0) {
-                          submitScore(player.userId, player.score);
-                          io.emit('leaderboardUpdate', getLeaderboard());
-                      }
-                      io.to(roomId).emit('gameState', updatedRoom);
-                  }
-              }, 1000);
+              startSoloTimer(roomId);
           } else {
               socket.emit('error', 'Could not create game');
           }
@@ -201,16 +182,18 @@ io.on('connection', (socket) => {
   });
 
   // ── Leaderboard ──
-  socket.on('submitScore', (data: { score: number }) => {
+  socket.on('submitScore', async (data: { score: number }) => {
       const userId = socketUserMap[socket.id];
       if (!userId) return;
 
-      submitScore(userId, data.score);
-      io.emit('leaderboardUpdate', getLeaderboard());
+      await submitScore(userId, data.score);
+      const lb = await getLeaderboard();
+      io.emit('leaderboardUpdate', lb);
   });
 
-  socket.on('getLeaderboard', () => {
-      socket.emit('leaderboardUpdate', getLeaderboard());
+  socket.on('getLeaderboard', async () => {
+      const lb = await getLeaderboard();
+      socket.emit('leaderboardUpdate', lb);
   });
 
   // ── Disconnect ──
@@ -223,7 +206,6 @@ io.on('connection', (socket) => {
         const soloRoom = getRoom(soloRoomId);
 
         if (soloRoom && !isSoloGameOver(soloRoom)) {
-            // Game still active — keep room alive, set cleanup timer
             console.log('Solo game still active, keeping room for reconnect:', soloRoomId);
             cleanupTimers[soloRoomId] = setTimeout(() => {
                 console.log('Reconnect window expired, cleaning up:', soloRoomId);
@@ -235,7 +217,6 @@ io.on('connection', (socket) => {
                 delete cleanupTimers[soloRoomId];
             }, SOLO_RECONNECT_WINDOW);
         } else {
-            // Game over or no room — clean up immediately
             if (soloTimers[soloRoomId]) {
                 clearInterval(soloTimers[soloRoomId]);
                 delete soloTimers[soloRoomId];
@@ -252,6 +233,16 @@ io.on('connection', (socket) => {
   });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// ── Start server with DB ──
+const start = async () => {
+    httpServer.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+};
+console.log(
+  "djod"
+)
+start().catch(err => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
 });

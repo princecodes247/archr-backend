@@ -12,15 +12,19 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.2.3",
     "@types/socket.io": "^3.0.1",
     "express": "^5.2.1",
+    "monarch-orm": "^0.9.0",
+    "mongodb": "^7.1.0",
     "nodemon": "^3.1.11",
     "socket.io": "^4.8.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "tsconfig-paths": "^4.2.0"
   }
 }

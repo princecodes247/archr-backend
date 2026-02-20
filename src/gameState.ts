@@ -1,4 +1,7 @@
 import crypto from 'crypto';
+import { collections } from './db';
+
+// ── Types (still used in-memory for rooms) ──
 
 export interface Player {
   id: string;        // socket.id (ephemeral)
@@ -21,37 +24,34 @@ export interface Room {
   startedAt: number;
 }
 
-export interface LeaderboardEntry {
-  userId: string;
-  score: number;
-  date: number;
-}
+// ── In-memory room storage (ephemeral) ──
 
 const rooms: Record<string, Room> = {};
-let leaderboard: LeaderboardEntry[] = [];
-
-// Seed leaderboard with some dummy data if empty
-if (leaderboard.length === 0) {
-    leaderboard = [
-        { userId: 'seed-1', score: 500, date: Date.now() },
-        { userId: 'seed-2', score: 450, date: Date.now() },
-        { userId: 'seed-3', score: 400, date: Date.now() },
-        { userId: 'seed-4', score: 350, date: Date.now() },
-        { userId: 'seed-5', score: 100, date: Date.now() }
-    ];
-}
 
 const SOLO_TIME_LIMIT = 60; // seconds
 
-// ── User ID management ──
+// ── User ID management (persisted to MongoDB) ──
 
 export const generateUserId = (): string => crypto.randomUUID();
 
-// Validate UUID format
 export const isValidUserId = (id: string): boolean =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-// ── Room management ──
+// Find or create user in DB
+export const findOrCreateUser = async (userId: string): Promise<string> => {
+    const existing = await collections.users.findOne({ userId });
+    if (existing) return existing.userId;
+
+    // Create new user
+    await collections.users.insertOne({
+        userId,
+        createdAt: new Date(),
+    });
+
+    return userId;
+};
+
+// ── Room management (in-memory) ──
 
 export const createRoom = (roomId: string, mode: 'solo' | 'multiplayer' = 'multiplayer'): Room => {
   rooms[roomId] = {
@@ -75,12 +75,10 @@ export const deleteRoom = (roomId: string) => {
     delete rooms[roomId];
 };
 
-// Find an active solo game for a userId
 export const findActiveGame = (userId: string): Room | undefined => {
     const roomId = `solo_${userId}`;
     const room = rooms[roomId];
     if (!room || room.mode !== 'solo') return undefined;
-    // Game is still active if time hasn't run out
     if (room.timeRemaining <= 0) return undefined;
     return room;
 };
@@ -97,23 +95,17 @@ export const joinRoom = (roomId: string, socketId: string, userId: string, mode:
   // Check if user is already in the room (reconnection)
   const existingPlayer = room.players.find(p => p.userId === userId);
   if (existingPlayer) {
-      // Update socket ID for reconnection
       existingPlayer.id = socketId;
-      // Restore turn if solo
       if (mode === 'solo') {
           room.currentTurn = userId;
       }
       return room;
   }
 
-  // Solo: only 1 player. If game is over, delete and recreate
   if (mode === 'solo') {
-      if (room.players.length >= 1) {
-          // Room already has a player with a different userId — can't join
-          return undefined;
-      }
+      if (room.players.length >= 1) return undefined;
   } else {
-      if (room.players.length >= 2) return undefined; // Full
+      if (room.players.length >= 2) return undefined;
   }
 
   room.players.push({ id: socketId, userId, score: 0 });
@@ -136,13 +128,10 @@ export const removePlayer = (socketId: string) => {
         const room = rooms[roomId];
         const idx = room.players.findIndex(p => p.id === socketId);
         if (idx !== -1) {
-            // For solo: don't remove player immediately — allow reconnect
             if (room.mode === 'solo') {
-                // Just return, keep the room alive for reconnection
                 return room;
             }
 
-            // Multiplayer: remove and reset
             room.players.splice(idx, 1);
             if (room.players.length === 0) {
                 delete rooms[roomId];
@@ -171,11 +160,8 @@ export const handleShot = (roomId: string, userId: string, score: number): Room 
 
     if (room.mode === 'solo') {
         if (isSoloGameOver(room)) return room;
-
         const player = room.players.find(p => p.userId === userId);
-        if (player) {
-            player.score += score;
-        }
+        if (player) player.score += score;
         room.round++;
         room.wind = { x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 2 };
         return room;
@@ -183,11 +169,8 @@ export const handleShot = (roomId: string, userId: string, score: number): Room 
 
     // Multiplayer
     if (room.currentTurn !== userId) return undefined;
-
     const player = room.players.find(p => p.userId === userId);
-    if (player) {
-        player.score += score;
-    }
+    if (player) player.score += score;
 
     const currentIdx = room.players.findIndex(p => p.userId === userId);
     const nextIdx = (currentIdx + 1) % room.players.length;
@@ -205,7 +188,6 @@ export const handleShot = (roomId: string, userId: string, score: number): Room 
     return room;
 };
 
-// Timer tick — called every second for solo rooms
 export const tickTimer = (roomId: string): Room | undefined => {
     const room = rooms[roomId];
     if (!room || room.mode !== 'solo') return undefined;
@@ -216,13 +198,27 @@ export const tickTimer = (roomId: string): Room | undefined => {
     return room;
 };
 
-// ── Leaderboard ──
+// ── Leaderboard (persisted to MongoDB) ──
 
-export const getLeaderboard = () => leaderboard;
+export const getLeaderboard = async () => {
+    const entries = await collections.leaderboard
+        .find({})
+        .sort({ score: -1 })
+        .limit(10);
 
-export const submitScore = (userId: string, score: number) => {
-    leaderboard.push({ userId, score, date: Date.now() });
-    leaderboard.sort((a, b) => b.score - a.score);
-    if (leaderboard.length > 10) leaderboard.length = 10;
-    return leaderboard;
+    return entries.map(e => ({
+        userId: e.userId,
+        score: e.score,
+        date: e.date.getTime(),
+    }));
+};
+
+export const submitScore = async (userId: string, score: number) => {
+    await collections.leaderboard.insertOne({
+        userId,
+        score,
+        date: new Date(),
+    });
+
+    return getLeaderboard();
 };
