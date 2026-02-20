@@ -77,14 +77,14 @@ io.on('connection', (socket) => {
       }
 
       // Persist user in DB
-      await findOrCreateUser(userId);
+      const user = await findOrCreateUser(userId);
 
       socketUserMap[socket.id] = userId;
 
       if (typeof callback === 'function') {
-          callback({ userId });
+          callback({ userId, name: user.name });
       } else {
-          socket.emit('registered', { userId });
+          socket.emit('registered', { userId, name: user.name });
       }
   });
 

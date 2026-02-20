@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import { generateUsername } from './utils';
 import { collections } from './db';
 
 // ── Types (still used in-memory for rooms) ──
@@ -30,25 +30,22 @@ const rooms: Record<string, Room> = {};
 
 const SOLO_TIME_LIMIT = 60; // seconds
 
-// ── User ID management (persisted to MongoDB) ──
+// Re-export helpers from utils
+export { generateUserId, isValidUserId } from './utils';
 
-export const generateUserId = (): string => crypto.randomUUID();
-
-export const isValidUserId = (id: string): boolean =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
-// Find or create user in DB
-export const findOrCreateUser = async (userId: string): Promise<string> => {
+// Find or create user in DB, returns { userId, name }
+export const findOrCreateUser = async (userId: string): Promise<{ userId: string; name: string }> => {
     const existing = await collections.users.findOne({ userId });
-    if (existing) return existing.userId;
+    if (existing) return { userId: existing.userId, name: existing.name };
 
-    // Create new user
+    const name = generateUsername();
     await collections.users.insertOne({
         userId,
+        name,
         createdAt: new Date(),
     });
 
-    return userId;
+    return { userId, name };
 };
 
 // ── Room management (in-memory) ──
@@ -204,13 +201,28 @@ export const getLeaderboard = async () => {
     const entries = await collections.leaderboard
         .find({})
         .sort({ score: -1 })
-        .limit(10);
+        .limit(10).populate({
+          user: {
+            select: {
+              name: true,
+            }
+          }
+        });
 
-    return entries.map(e => ({
+    // Join user names
+    const results = entries.map((e) => {
+      return {
         userId: e.userId,
+        name: e.user?.name || e.userId.slice(0, 8),
         score: e.score,
-        date: e.date.getTime(),
-    }));
+        date: e.date,
+      };
+    });
+
+
+    console.log({entries, results});
+
+    return results;
 };
 
 export const submitScore = async (userId: string, score: number) => {
