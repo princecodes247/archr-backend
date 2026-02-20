@@ -23,7 +23,6 @@ export interface Room {
 
 export interface LeaderboardEntry {
   userId: string;
-  name: string;
   score: number;
   date: number;
 }
@@ -34,11 +33,11 @@ let leaderboard: LeaderboardEntry[] = [];
 // Seed leaderboard with some dummy data if empty
 if (leaderboard.length === 0) {
     leaderboard = [
-        { userId: 'seed-1', name: 'Robin Hood', score: 500, date: Date.now() },
-        { userId: 'seed-2', name: 'Legolas', score: 450, date: Date.now() },
-        { userId: 'seed-3', name: 'Katniss', score: 400, date: Date.now() },
-        { userId: 'seed-4', name: 'Hawkeye', score: 350, date: Date.now() },
-        { userId: 'seed-5', name: 'Cupid', score: 100, date: Date.now() }
+        { userId: 'seed-1', score: 500, date: Date.now() },
+        { userId: 'seed-2', score: 450, date: Date.now() },
+        { userId: 'seed-3', score: 400, date: Date.now() },
+        { userId: 'seed-4', score: 350, date: Date.now() },
+        { userId: 'seed-5', score: 100, date: Date.now() }
     ];
 }
 
@@ -221,8 +220,8 @@ export const tickTimer = (roomId: string): Room | undefined => {
 
 export const getLeaderboard = () => leaderboard;
 
-export const submitScore = (userId: string, name: string, score: number) => {
-    leaderboard.push({ userId, name, score, date: Date.now() });
+export const submitScore = (userId: string, score: number) => {
+    leaderboard.push({ userId, score, date: Date.now() });
     leaderboard.sort((a, b) => b.score - a.score);
     if (leaderboard.length > 10) leaderboard.length = 10;
     return leaderboard;

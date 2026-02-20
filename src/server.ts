@@ -101,6 +101,12 @@ io.on('connection', (socket) => {
                               clearInterval(soloTimers[roomId]);
                               delete soloTimers[roomId];
                               updatedRoom.currentTurn = '';
+                              // Auto-submit score to leaderboard
+                              const player = updatedRoom.players[0];
+                              if (player && player.score > 0) {
+                                  submitScore(player.userId, player.score);
+                                  io.emit('leaderboardUpdate', getLeaderboard());
+                              }
                               io.to(roomId).emit('gameState', updatedRoom);
                           }
                       }, 1000);
@@ -135,6 +141,12 @@ io.on('connection', (socket) => {
                       clearInterval(soloTimers[roomId]);
                       delete soloTimers[roomId];
                       updatedRoom.currentTurn = '';
+                      // Auto-submit score to leaderboard
+                      const player = updatedRoom.players[0];
+                      if (player && player.score > 0) {
+                          submitScore(player.userId, player.score);
+                          io.emit('leaderboardUpdate', getLeaderboard());
+                      }
                       io.to(roomId).emit('gameState', updatedRoom);
                   }
               }, 1000);
@@ -189,11 +201,11 @@ io.on('connection', (socket) => {
   });
 
   // ── Leaderboard ──
-  socket.on('submitScore', (data: { name: string, score: number }) => {
+  socket.on('submitScore', (data: { score: number }) => {
       const userId = socketUserMap[socket.id];
       if (!userId) return;
 
-      submitScore(userId, data.name, data.score);
+      submitScore(userId, data.score);
       io.emit('leaderboardUpdate', getLeaderboard());
   });
 
