@@ -1,55 +1,12 @@
-import { generateUsername } from './utils';
 import { collections } from './db';
-
-// ── Types (still used in-memory for rooms) ──
-
-export interface Player {
-  id: string;        // socket.id (ephemeral)
-  userId: string;    // persistent user ID
-  name?: string;
-  score: number;
-}
-
-export interface Room {
-  id: string;
-  mode: 'solo' | 'multiplayer';
-  players: Player[];
-  currentTurn: string; // userId of current player
-  round: number;
-  maxRounds: number;
-  wind: { x: number; y: number };
-  // Timed solo fields
-  timeLimit: number;
-  timeRemaining: number;
-  startedAt: number;
-}
+import { Room } from './types';
+import { isSoloGameOver } from './utils';
 
 // ── In-memory room storage (ephemeral) ──
-
 const rooms: Record<string, Room> = {};
-
 const SOLO_TIME_LIMIT = 60; // seconds
 
-// Re-export helpers from utils
-export { generateUserId, isValidUserId } from './utils';
-
-// Find or create user in DB, returns { userId, name }
-export const findOrCreateUser = async (userId: string): Promise<{ userId: string; name: string }> => {
-    const existing = await collections.users.findOne({ userId });
-    if (existing) return { userId: existing.userId, name: existing.name };
-
-    const name = generateUsername();
-    await collections.users.insertOne({
-        userId,
-        name,
-        createdAt: new Date(),
-    });
-
-    return { userId, name };
-};
-
 // ── Room management (in-memory) ──
-
 export const createRoom = (roomId: string, mode: 'solo' | 'multiplayer' = 'multiplayer'): Room => {
   rooms[roomId] = {
     id: roomId,
@@ -144,11 +101,6 @@ export const removePlayer = (socketId: string) => {
         }
     }
     return undefined;
-};
-
-export const isSoloGameOver = (room: Room): boolean => {
-    if (room.mode !== 'solo') return false;
-    return room.timeRemaining <= 0;
 };
 
 export const handleShot = (roomId: string, userId: string, score: number): Room | undefined => {

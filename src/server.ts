@@ -3,11 +3,11 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { calculateShot } from './physics';
 import {
-    generateUserId, isValidUserId, findOrCreateUser,
     joinRoom, handleShot, removePlayer, getRoom, deleteRoom,
-    tickTimer, isSoloGameOver, findActiveGame,
+    tickTimer, findActiveGame,
     submitScore, getLeaderboard
 } from './gameState';
+import { findOrCreateUser, generateUserId, isSoloGameOver, isValidUserId } from './utils';
 
 const app = express();
 const httpServer = createServer(app);

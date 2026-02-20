@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { collections } from './db';
+import { Room } from './types';
 
 // ── User ID ──
 
@@ -28,4 +30,24 @@ export const generateUsername = (): string => {
     const noun = nouns[Math.floor(Math.random() * nouns.length)];
     const num = Math.floor(Math.random() * 100);
     return `${adj}${noun}${num}`;
+};
+
+export const isSoloGameOver = (room: Room): boolean => {
+    if (room.mode !== 'solo') return false;
+    return room.timeRemaining <= 0;
+};
+
+// Find or create user in DB, returns { userId, name }
+export const findOrCreateUser = async (userId: string): Promise<{ userId: string; name: string }> => {
+    const existing = await collections.users.findOne({ userId });
+    if (existing) return { userId: existing.userId, name: existing.name };
+
+    const name = generateUsername();
+    await collections.users.insertOne({
+        userId,
+        name,
+        createdAt: new Date(),
+    });
+
+    return { userId, name };
 };
