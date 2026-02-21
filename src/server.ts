@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { calculateShot } from './physics';
@@ -11,14 +12,35 @@ import { findOrCreateUser, generateUserId, isSoloGameOver, isValidUserId } from 
 
 const app = express();
 const httpServer = createServer(app);
+
+// Supported origins for CORS
+const allowedOrigins = [
+  'http://localhost:5173',
+  process.env.FRONTEND_URL,
+].filter(Boolean) as string[];
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
+
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl)
+      // or if the origin is in our allowed list
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // socket.id → userId mapping
 const socketUserMap: Record<string, string> = {};
