@@ -265,9 +265,7 @@ const start = async () => {
         console.log(`Server running on port ${PORT}`);
     });
 };
-console.log(
-  "djod"
-)
+
 start().catch(err => {
     console.error('Failed to start server:', err);
     process.exit(1);

@@ -171,9 +171,6 @@ export const getLeaderboard = async () => {
       };
     });
 
-
-    console.log({entries, results});
-
     return results;
 };
 
