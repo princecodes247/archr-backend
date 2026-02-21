@@ -24,6 +24,10 @@ app.use(cors({
   credentials: true
 }));
 
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 const io = new Server(httpServer, {
   cors: {
     origin: (origin, callback) => {
