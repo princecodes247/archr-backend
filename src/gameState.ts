@@ -1,4 +1,4 @@
-import { collections, client } from './db';
+import { collections } from './db';
 import { Room } from './types';
 import { isSoloGameOver } from './utils';
 
