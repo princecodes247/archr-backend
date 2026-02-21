@@ -150,19 +150,35 @@ export const tickTimer = (roomId: string): Room | undefined => {
 // ── Leaderboard (persisted to MongoDB) ──
 
 export const getLeaderboard = async () => {
-    const entries = await collections.leaderboard
-        .find({})
-        .sort({ score: -1 })
-        .limit(10).populate({
-          user: {
-            select: {
-              name: true,
-            }
-          }
-        });
+    const entries = await collections.leaderboard.aggregate().addStage({
+        $sort: { score: -1 },
+    }).addStage({
+        $group: {
+            _id: "$userId",
+            userId: { $first: "$userId" },
+            score: { $first: "$score" },
+            date: { $first: "$date" }
+        }
+    }).addStage({
+        $sort: { score: -1 },
+    }).addStage({
+        $limit: 10,
+    }).addStage({
+        $lookup: {
+            from: "users",
+            localField: "userId",
+            foreignField: "userId",
+            as: "user"
+        }
+    }).addStage({
+        $unwind: {
+            path: "$user",
+            preserveNullAndEmptyArrays: true
+        }
+    });
 
     // Join user names
-    const results = entries.map((e) => {
+    const results = entries.map((e: any) => {
       return {
         userId: e.userId,
         name: e.user?.name || e.userId.slice(0, 8),
