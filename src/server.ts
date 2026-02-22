@@ -6,7 +6,7 @@ import { calculateShot } from './physics';
 import {
     joinRoom, handleShot, removePlayer, getRoom, deleteRoom,
     tickTimer, findActiveGame,
-    submitScore, getLeaderboard
+    submitScore, getLeaderboard, getGeneralStats
 } from './gameState';
 import { findOrCreateUser, generateUserId, isSoloGameOver, isValidUserId } from './utils';
 
@@ -26,6 +26,16 @@ app.use(cors({
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.get('/stats', async (req, res) => {
+    try {
+        const stats = await getGeneralStats();
+        res.status(200).json(stats);
+    } catch (err) {
+        console.error('Failed to get general stats:', err);
+        res.status(500).json({ error: 'Failed to fetch stats' });
+    }
 });
 
 const io = new Server(httpServer, {

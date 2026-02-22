@@ -157,7 +157,8 @@ export const getLeaderboard = async () => {
             _id: "$userId",
             userId: { $first: "$userId" },
             score: { $first: "$score" },
-            date: { $first: "$date" }
+            date: { $first: "$date" },
+            playCount: { $sum: 1 }
         }
     }).addStage({
         $sort: { score: -1 },
@@ -184,6 +185,7 @@ export const getLeaderboard = async () => {
         name: e.user?.name || e.userId.slice(0, 8),
         score: e.score,
         date: e.date,
+        playCount: e.playCount,
       };
     });
 
@@ -198,4 +200,26 @@ export const submitScore = async (userId: string, score: number) => {
     });
 
     return getLeaderboard();
+};
+
+export const getGeneralStats = async () => {
+    const stats: any = await collections.leaderboard.aggregate().addStage({
+        $group: {
+            _id: null,
+            totalGames: { $sum: 1 },
+            uniquePlayers: { $addToSet: "$userId" }
+        }
+    }).addStage({
+        $project: {
+            _id: 0,
+            totalGames: 1,
+            totalPlayers: { $size: "$uniquePlayers" }
+        }
+    });
+
+    if (!stats || stats.length === 0) {
+        return { totalGames: 0, totalPlayers: 0 };
+    }
+
+    return stats[0];
 };
